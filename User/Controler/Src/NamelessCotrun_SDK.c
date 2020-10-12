@@ -414,8 +414,8 @@ void SDK_DT_Send_Check(unsigned char mode)
   sdk_data_to_send[2]=0xFC;
   sdk_data_to_send[3]=2;
   sdk_data_to_send[4]=mode;
-  sdk_data_to_send[5]=0
-    ;
+  sdk_data_to_send[5]=0;
+	
   u8 sum = 0;
   for(u8 i=0;i<6;i++) sum += sdk_data_to_send[i];
   sdk_data_to_send[6]=sum;
@@ -423,6 +423,7 @@ void SDK_DT_Send_Check(unsigned char mode)
 }
 
 uint8_t SDK_Now_Mode=0x00;
+uint8_t Flight_Control=0x01;
 uint8_t SDK_Mode_Set=0x02;
 #define SDK_TARGET_X_OFFSET  0
 #define SDK_TARGET_Y_OFFSET  0//-12
@@ -433,6 +434,7 @@ Vector2f SDK_Target,SDK_Target_Offset;
 float SDK_Target_Yaw_Gyro=0;
 #define  Pixel_Size    0.0048
 #define  Focal_Length  0.42
+static int ctrl_number=0;
 
 void SDK_Line_DT_Reset()
 {
@@ -456,12 +458,14 @@ void SDK_Point_DT_Reset()
   SDK_Point.Pixel=0;
   SDK_Point.flag=0;
 }
+
 void Openmv_Data_Receive_Anl(u8 *data_buf,u8 num)
 {
   //u8 sum = 0;
   //for(u8 i=0;i<(num-1);i++)  sum += *(data_buf+i);
   //if(!(sum==*(data_buf+num-1)))	return;	                //不满足和校验条件	
-  if(!(*(data_buf)==0xAA && *(data_buf+1)==0xAF))	return;//不满足帧头条件		   
+  if(!(*(data_buf)==0xAA && *(data_buf+1)==0xAF))	return;//不满足帧头条件
+	/*
   if(*(data_buf+2)==0XC0)//色块检测
   {
     SDK_Recieve_Flag=1;
@@ -481,6 +485,7 @@ void Openmv_Data_Receive_Anl(u8 *data_buf,u8 num)
     if(SDK_Line.up_ok==1||SDK_Line.down_ok==1)
     {
       SDK_Line.line_ctrl_enable=1;
+			//NamelessQuad.Position[_YAW]表示融合后的垂直高度位置
       SDK_Target.x=(Pixel_Size*(40-SDK_Line.x)*NamelessQuad.Position[_YAW])/Focal_Length
         +NamelessQuad.Position[_YAW]*FastTan(Roll* DEG2RAD);
       if(SDK_Line.line_angle>0&&SDK_Line.line_angle<90)
@@ -493,7 +498,8 @@ void Openmv_Data_Receive_Anl(u8 *data_buf,u8 num)
     
     SDK_Point_DT_Reset();
   }
-  else if(*(data_buf+2)==0XF2)//点检测
+	*/
+  if(*(data_buf+2)==0XF2)//点检测
   {
     SDK_Now_Mode=0x01;
     SDK_Point.x=*(data_buf+4)<<8|*(data_buf+5);
@@ -521,11 +527,7 @@ void Openmv_Data_Receive_Anl(u8 *data_buf,u8 num)
       +NamelessQuad.Position[_YAW]*FastTan(Pitch* DEG2RAD)-SDK_Target_Offset.y;  
     SDK_Line_DT_Reset(); 
   }
-  else if(*(data_buf+2)==0XC3)//二维码
-  {
-    SDK_Recieve_Flag=1;
-  }
-  //串口数传SDK模式
+	//串口数传SDK模式
   else if(*(data_buf+2)==0X01)//高度位置控制
   {
     if(*(data_buf+4)==0X01)//上升  
@@ -545,6 +547,40 @@ void Openmv_Data_Receive_Anl(u8 *data_buf,u8 num)
     }
     SDK_Recieve_Flag=1;
   }
+	else if(*(data_buf+2)==0X02)//角度环控制
+	{
+		if(*(data_buf+4)==0X01)//Pitch轴角度控制  
+    {
+      Total_Controller.Pitch_Angle_Control.Expect+=*(data_buf+5);
+    }
+    else if(*(data_buf+4)==0X02)//Roll轴角度控制 
+    {
+      Total_Controller.Roll_Angle_Control.Expect-=*(data_buf+5);
+    }
+    else if(*(data_buf+4)==0X03)//Yaw轴角度控制
+    {
+      Total_Controller.Yaw_Angle_Control.Expect+=*(data_buf+5);
+    }
+    SDK_Recieve_Flag=1; 
+	}
+	else if(*(data_buf+2)==0X03)//机体坐标系位置控制
+	{
+		//move_with_speed_target(10,0,2000 ,&SDK_Duty_Status,1-1)//左
+		//move_with_speed_target(0,10,2000 ,&SDK_Duty_Status,2-1)//前
+		//move_with_speed_target(-10,0,2000,&SDK_Duty_Status,3-1)//右
+		//move_with_speed_target(0,-10,2000,&SDK_Duty_Status,4-1)//后
+		if(*(data_buf+4)==0X01)//xy轴速度控制（速度单位m/s，dalta单位ms）
+		{
+			move_with_speed_target(*(data_buf+5),*(data_buf+6),2000,&SDK_Duty_Status,ctrl_number-1);
+		}
+		SDK_Recieve_Flag=1;
+	}
+	/*
+  else if(*(data_buf+2)==0XF4)//二维码和条形码
+  {
+    SDK_Recieve_Flag=1;
+  }
+	*/
   else
   {
     SDK_Recieve_Flag=0;
@@ -596,6 +632,7 @@ void SDK_Data_Receive_Prepare(u8 data)
 
 
 uint16_t SDK_Data_Offset=0;
+uint16_t NANO_Data_Offset=0;
 void SDK_Data_Prase(void)
 {
   static uint16_t sdk_prase_cnt=0;
@@ -624,10 +661,12 @@ void SDK_Init(void)
   SDK_Line_DT_Reset();//复位SDK线检测数据
   SDK_Point_DT_Reset();//复位SDK点检测数据
   ReadFlashParameterOne(SDK_MODE_DEFAULT,&sdk_mode_default);
-  if(isnan(sdk_mode_default)==0)
+  if(isnan(sdk_mode_default)==0 && takeoff_flag == 1)
   {
-    SDK_Mode_Set=(uint8_t)(sdk_mode_default);
-    SDK_DT_Send_Check(SDK_Mode_Set);//初始化opemmv工作模式，默认以上次工作状态配置
+		//向openmv发送外部控制标志
+		SDK_DT_Send_Check(Flight_Control);
+    //SDK_Mode_Set=(uint8_t)(sdk_mode_default);
+    //SDK_DT_Send_Check(SDK_Mode_Set);//初始化opemmv工作模式，默认以上次工作状态配置
   } 
 }
 

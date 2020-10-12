@@ -100,7 +100,7 @@ bool Key_Scan(uint8_t release)
 			{
 				while(QuadKey1==0&&QuadKey2!=0);//等待按键释放
 				Page_Number++;
-				if(Page_Number>13) Page_Number=0;
+				if(Page_Number>14) Page_Number=0;
 				LCD_CLS();
 			}
 		}
@@ -112,7 +112,7 @@ bool Key_Scan(uint8_t release)
 			{
 				while(QuadKey2==0&&QuadKey1!=0);//等待按键释放
 				Page_Number--;
-				if(Page_Number<0) Page_Number=13;
+				if(Page_Number<0) Page_Number=14;
 				LCD_CLS();
 			}
 		}
@@ -450,14 +450,14 @@ void QuadShow(uint8_t show_enable)
 		}
 		else if(Page_Number==14)
 		{
+			LCD_clear_L(0,0);  LCD_P6x8Str(0,0,"Detect");write_6_8_number(40,0,SDK_Point.x);write_6_8_number(70,0,SDK_Point.y);
+		}
+		else if(Page_Number==15)
+		{
 			LCD_clear_L(0,0);LCD_clear_L(0,1);LCD_P8x16Str(0,0,"Please Move Thr");
 			LCD_clear_L(0,2);LCD_clear_L(0,3);LCD_P8x16Str(0,2,"Up And Pull Out");
 			LCD_clear_L(0,4);LCD_clear_L(0,5);LCD_P8x16Str(0,4,"The Power Supply");
 			LCD_clear_L(0,6);LCD_clear_L(0,7);LCD_P8x16Str(0,6,"ESC Calibration");
-		}
-		else if(Page_Number==15)
-		{
-			Copyright_Show();
 		}
   }
 }
