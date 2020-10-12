@@ -18,7 +18,10 @@ del *.axf /s
 del *.tra /s
 del *.dep /s           
 del JLinkLog.txt /s
-
+del Objects /s /q
+del Listings /s /q
+rd /s /q Objects
+rd /s /q Listings
 del *.iex /s
 del *.htm /s
 del *.sct /s
